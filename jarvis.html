@@ -1,0 +1,49 @@
+<!-- templates/jarvis.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Jarvis Remote</title>
+</head>
+<body>
+    <button id="talkBtn">Hold to Talk</button>
+    <div id="response"></div>
+    
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        const socket = io();
+        let mediaRecorder;
+        
+        document.getElementById('talkBtn').addEventListener('mousedown', async () => {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            
+            mediaRecorder.ondataavailable = (event) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    socket.emit('audio_stream', {
+                        audio: reader.result.split(',')[1]
+                    });
+                };
+                reader.readAsDataURL(event.data);
+            };
+            
+            mediaRecorder.start();
+        });
+        
+        document.getElementById('talkBtn').addEventListener('mouseup', () => {
+            if (mediaRecorder) {
+                mediaRecorder.stop();
+            }
+        });
+        
+        socket.on('response', (data) => {
+            // Text anzeigen
+            document.getElementById('response').innerText = data.text;
+            
+            // Audio abspielen
+            const audio = new Audio('data:audio/wav;base64,' + data.audio);
+            audio.play();
+        });
+    </script>
+</body>
+</html>

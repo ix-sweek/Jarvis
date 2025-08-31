@@ -12,3 +12,9 @@ credentials/
 *.wav
 *.mp3
 *.ogg
+*.pem
+*.key
+*.crt
+certs/
+certificates/
+.env

@@ -7,11 +7,16 @@ from datetime import datetime
 from gtts import gTTS
 import os
 from pathlib import Path
+import eventlet
+
+# Patch für SSL
+eventlet.monkey_patch()
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*")
+app.config['SECRET_KEY'] = 'your-secret-key-here'
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
-# SSL Certificate paths (outside git repo)
+# SSL Certificate paths
 HOME = Path.home()
 CERT_PATH = HOME / "certs" / "cert.pem"
 KEY_PATH = HOME / "certs" / "key.pem"
@@ -76,30 +81,24 @@ def handle_command():
         'audio': base64.b64encode(audio).decode() if audio else None
     })
 
+@socketio.on('connect')
+def handle_connect():
+    print('Client connected')
+
 if __name__ == '__main__':
-    # Check if certificates exist
     if not CERT_PATH.exists() or not KEY_PATH.exists():
         print("❌ SSL certificates not found!")
-        print(f"   Expected at: {CERT_PATH} and {KEY_PATH}")
-        print("\n📝 Create them with:")
-        print("   openssl req -x509 -newkey rsa:2048 -nodes \\")
-        print("     -out ~/certs/cert.pem -keyout ~/certs/key.pem -days 365")
         exit(1)
     
     print("=" * 50)
-    print("🤖 JARVIS AI ASSISTANT (HTTPS)")
+    print("🤖 JARVIS AI ASSISTANT (HTTPS with eventlet)")
     print("=" * 50)
-    print("✅ SSL Certificates found")
-    print("Access from any device at:")
-    print("  → https://covas-ai.local:5000")
-    print("  → https://192.168.1.83:5000")
-    print("=" * 50)
-    print("NOTE: Accept the security warning in your browser!")
+    print("Starting server on https://192.168.1.83:5000")
     print("=" * 50)
     
-    # Run with SSL
+    # Use eventlet with SSL
     socketio.run(app, 
                  host='0.0.0.0', 
-                 port=5000, 
-                 debug=True,
-                 ssl_context=(str(CERT_PATH), str(KEY_PATH)))
+                 port=5000,
+                 certfile=str(CERT_PATH),
+                 keyfile=str(KEY_PATH))

@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Jarvis Remote</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            text-align: center;
+            max-width: 500px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 2rem;
+        }
+        #talkBtn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            font-size: 1.2rem;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        #talkBtn:active {
+            background: #764ba2;
+            transform: scale(0.95);
+        }
+        #talkBtn.recording {
+            background: #e74c3c;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.7); }
+            70% { box-shadow: 0 0 0 20px rgba(231, 76, 60, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0); }
+        }
+        #status {
+            margin-top: 1rem;
+            color: #666;
+        }
+        #response {
+            margin-top: 2rem;
+            padding: 1rem;
+            background: #f7f7f7;
+            border-radius: 10px;
+            min-height: 50px;
+        }
+        .command-input {
+            width: 100%;
+            padding: 0.8rem;
+            margin: 1rem 0;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 Jarvis Assistant</h1>
+        
+        <input type="text" id="commandInput" class="command-input" 
+               placeholder="Type a command or use voice..." 
+               onkeypress="if(event.key==='Enter') sendTextCommand()">
+        
+        <button id="talkBtn">🎤 Hold to Talk</button>
+        
+        <div id="status">Ready</div>
+        <div id="response">Waiting for command...</div>
+    </div>
+    
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        const socket = io();
+        let mediaRecorder;
+        let audioChunks = [];
+        
+        const talkBtn = document.getElementById('talkBtn');
+        const statusDiv = document.getElementById('status');
+        const responseDiv = document.getElementById('response');
+        
+        // Text command
+        function sendTextCommand() {
+            const input = document.getElementById('commandInput');
+            if (input.value.trim()) {
+                fetch('/api/command', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({command: input.value})
+                })
+                .then(r => r.json())
+                .then(data => {
+                    responseDiv.innerText = data.response;
+                    input.value = '';
+                });
+            }
+        }
+        
+        // Voice recording
+        talkBtn.addEventListener('mousedown', startRecording);
+        talkBtn.addEventListener('mouseup', stopRecording);
+        talkBtn.addEventListener('touchstart', startRecording);
+        talkBtn.addEventListener('touchend', stopRecording);
+        
+        async function startRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+                
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const reader = new FileReader();
+                    
+                    reader.onloadend = () => {
+                        socket.emit('audio_stream', {
+                            audio: reader.result.split(',')[1]
+                        });
+                    };
+                    
+                    reader.readAsDataURL(audioBlob);
+                };
+                
+                mediaRecorder.start();
+                talkBtn.classList.add('recording');
+                statusDiv.innerText = 'Recording...';
+            } catch (err) {
+                console.error('Error accessing microphone:', err);
+                statusDiv.innerText = 'Error: Cannot access microphone';
+            }
+        }
+        
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                talkBtn.classList.remove('recording');
+                statusDiv.innerText = 'Processing...';
+            }
+        }
+        
+        // Socket events
+        socket.on('response', (data) => {
+            responseDiv.innerText = data.text;
+            statusDiv.innerText = 'Ready';
+            
+            // Play audio if available
+            if (data.audio && data.audio !== 'bW9ja19hdWRpb19kYXRh') { // Skip mock data
+                const audio = new Audio('data:audio/wav;base64,' + data.audio);
+                audio.play();
+            }
+        });
+        
+        socket.on('error', (data) => {
+            responseDiv.innerText = 'Error: ' + data.message;
+            statusDiv.innerText = 'Ready';
+        });
+        
+        socket.on('connect', () => {
+            statusDiv.innerText = 'Connected';
+        });
+        
+        socket.on('disconnect', () => {
+            statusDiv.innerText = 'Disconnected';
+        });
+    </script>
+</body>
+</html>
